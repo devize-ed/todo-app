@@ -1,0 +1,22 @@
+services:
+  db:
+    image: postgres:17
+    container_name: todo-app-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - ${PROJECT_ROOT}/out/pgdata:/var/lib/postgresql
+    restart: always
+
+
+  migrate:
+    image: migrate/migrate:4
+    container_name: todo-app-migrate
+    depends_on:
+      - db
+    volumes:
+      - ${PROJECT_ROOT}/migrations:/migrations
