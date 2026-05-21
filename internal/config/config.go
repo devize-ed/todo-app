@@ -11,53 +11,82 @@ import (
 )
 
 type Config struct {
-	DB       DBConfig
-	Server   ServerConfig
-	LogLevel string
+	Postgres PostgresConfig `yaml:"postgres"`
+	Server   ServerConfig   `yaml:"server"`
+	LogLevel string         `yaml:"log_level" env:"LOG_LEVEL"`
 }
 
-type DBConfig struct {
-	DB_URI string
-}
-
-type postgresConfig struct {
-	user     string `env:"POSTGRES_USER"`
-	password string `env:"POSTGRES_PASSWORD"`
-	db       string `env:"POSTGRES_DB"`
+type PostgresConfig struct {
+	User     string `yaml:"user" env:"POSTGRES_USER"`
+	Password string `yaml:"password" env:"POSTGRES_PASSWORD"`
+	DB       string `yaml:"db" env:"POSTGRES_DB"`
+	Port     int    `yaml:"port" env:"POSTGRES_PORT"`
+	Host     string `yaml:"host" env:"POSTGRES_HOST"`
+	SSLMode  string `yaml:"ssl_mode" env:"POSTGRES_SSLMODE"`
 }
 
 type ServerConfig struct {
-	Addr    string        `env:"SERVER_ADDRESS"`
-	Timeout time.Duration `env:"SERVER_TIMEOUT"`
+	Addr    string        `yaml:"address" env:"SERVER_ADDRESS"`
+	Timeout time.Duration `yaml:"timeout" env:"SERVER_TIMEOUT"`
 }
 
-func (c *Config) Load() error {
-	filename := flag.String("config", "/cfg/config.yaml", "config file")
-	flag.Parse()
+func defaultConfig() *Config {
+	return &Config{
+		Server: ServerConfig{
+			Addr: "localhost:8080",
+		},
+		Postgres: PostgresConfig{
+			User:     "postgres",
+			Password: "postgres",
+			DB:       "postgres",
+			Port:     5432,
+			Host:     "localhost",
+			SSLMode:  "disable",
+		},
+		LogLevel: "debug",
+	}
+}
 
-	if _, err := os.Stat(*filename); os.IsNotExist(err) {
+func GetFilePath() string {
+	filepath := flag.String("config", "/cfg/config.yaml", "config file")
+	flag.Parse()
+	return *filepath
+}
+
+func loadFromFile(filepath string, cfg *Config) error {
+	if _, err := os.Stat(filepath); os.IsNotExist(err) {
 		return fmt.Errorf("config file not found: %v", err)
 	}
 
-	cfg, err := os.ReadFile(*filename)
+	cfgFile, err := os.ReadFile(filepath)
 	if err != nil {
 		return fmt.Errorf("failed to read config file: %w", err)
 	}
 
-	err = yaml.Unmarshal(cfg, &c)
+	err = yaml.Unmarshal(cfgFile, cfg)
 	if err != nil {
 		return fmt.Errorf("failed to unmarshal config file: %w", err)
 	}
 
-	
-
 	return nil
 }
 
-func (pc *postgresConfig) buildURI() (string, error) {
-	if err := env.Parse(&pc); err != nil {
-		return "", fmt.Errorf("failed to parse config: %w", err)
+func Load(filepath string) (*Config, error) {
+	// default config
+	cfg := defaultConfig()
+	// load config from file
+	if err := loadFromFile(filepath, cfg); err != nil {
+		return nil, fmt.Errorf("failed to load config: %w", err)
 	}
 
-	return fmt.Sprintf("postgres://%s:%s@db:5432/%s?sslmode=disable", pc.user, pc.password, pc.db), nil
+	// parse config from environment variables
+	if err := env.Parse(cfg); err != nil {
+		return nil, fmt.Errorf("failed to parse config: %w", err)
+	}
+
+	return cfg, nil
+}
+
+func (p *PostgresConfig) BuildURI() string {
+	return fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s", p.User, p.Password, p.Host, p.Port, p.DB, p.SSLMode)
 }
